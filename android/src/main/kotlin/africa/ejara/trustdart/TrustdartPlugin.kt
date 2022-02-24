@@ -464,7 +464,6 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
 
     for (utx in utxos) {
       val privateKey = wallet.getKey(coin, txData["path"])
-      input = input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
       val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
       txHash.reverse();
       val outPoint = Bitcoin.OutPoint.newBuilder()
@@ -478,6 +477,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
               .setOutPoint(outPoint)
               .setScript(ByteString.copyFrom(txScript))
               .build()
+      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
       input.addUtxo(utxo)
     }
 
