@@ -269,7 +269,11 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(wallet: wallet, path: path, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoin, path: path, txData: txData)
+        case "LTC":
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .litecoin, path: path, txData: txData)
+        case "BCH":
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoinCash, path: path, txData: txData)
         case "ETH":
             txHash = signEthereumTransaction(wallet: wallet, path: path, txData: txData)
         case "XTZ":
@@ -424,8 +428,8 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         return txHash
     }
 
-    func signBitcoinTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
-        let privateKey = wallet.getKey(coin: CoinType.bitcoin, derivationPath: path)
+    func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, path: String, txData:  [String: Any]) -> String? {
+        let privateKey = wallet.getKey(coin: coin, derivationPath: path)
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
         var unspent: [BitcoinUnspentTransaction] = []
         
@@ -439,7 +443,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             })
         }
         let input: BitcoinSigningInput = BitcoinSigningInput.with {
-            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: .bitcoin)
+            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String // can be same sender address
@@ -452,7 +456,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             }
         }
         
-        let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: .bitcoin)
+        let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: coin)
         return output.encoded.hexString
       }
 }

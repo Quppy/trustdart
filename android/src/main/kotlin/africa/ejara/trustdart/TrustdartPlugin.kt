@@ -284,7 +284,13 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         signEthereumTransaction(wallet, path, txData)
       }
       "BTC" -> {
-        signBitcoinTransaction(wallet, path, txData)
+        signBitcoinTransaction(wallet, CoinType.BITCOIN, path, txData)
+      }
+      "LTC" -> {
+        signBitcoinTransaction(wallet, CoinType.LITECOIN, path, txData)
+      }
+      "BCH" -> {
+        signBitcoinTransaction(wallet, CoinType.BITCOINCASH, path, txData)
       }
       "TRX" -> {
         signTronTransaction(wallet, path, txData)
@@ -446,13 +452,13 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     return result
   }
 
-  private fun signBitcoinTransaction(wallet: HDWallet, path: String, txData: Map<String, Any>): String? {
-    val privateKey = wallet.getKey(CoinType.BITCOIN, path)
+  private fun signBitcoinTransaction(wallet: HDWallet, coin, path: String, txData: Map<String, Any>): String? {
+    val privateKey = wallet.getKey(coin, path)
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
 
     val input = Bitcoin.SigningInput.newBuilder()
             .setAmount((txData["amount"] as Int).toLong())
-            .setHashType(BitcoinScript.hashTypeForCoin(CoinType.BITCOIN))
+            .setHashType(BitcoinScript.hashTypeForCoin(coin))
             .setToAddress(txData["toAddress"] as String)
             .setChangeAddress(txData["changeAddress"] as String)
             .setByteFee(1)
@@ -475,7 +481,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
       input.addUtxo(utxo)
     }
 
-    var output = AnySigner.sign(input.build(), CoinType.BITCOIN, Bitcoin.SigningOutput.parser())
+    var output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     // since we want to set our own fee
     // but such functionality is not obvious in the trustwalletcore library
     // a hack is used for now to calculate the byteFee
@@ -484,7 +490,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     val byteFee = fees.div(size) // this gives the fee per byte truncated to Long
     // now we set new byte size
     if (byteFee > 1) input.setByteFee(byteFee)
-    output = AnySigner.sign(input.build(), CoinType.BITCOIN, Bitcoin.SigningOutput.parser())
+    output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     return  Numeric.toHexString(output.encoded.toByteArray())
   }
 }
