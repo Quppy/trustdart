@@ -284,13 +284,13 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         signEthereumTransaction(wallet, path, txData)
       }
       "BTC" -> {
-        signBitcoinTransaction(wallet, CoinType.BITCOIN, path, txData)
+        signBitcoinTransaction(wallet, CoinType.BITCOIN, txData)
       }
       "LTC" -> {
-        signBitcoinTransaction(wallet, CoinType.LITECOIN, path, txData)
+        signBitcoinTransaction(wallet, CoinType.LITECOIN, txData)
       }
       "BCH" -> {
-        signBitcoinTransaction(wallet, CoinType.BITCOINCASH, path, txData)
+        signBitcoinTransaction(wallet, CoinType.BITCOINCASH, txData)
       }
       "TRX" -> {
         signTronTransaction(wallet, path, txData)
@@ -452,8 +452,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     return result
   }
 
-  private fun signBitcoinTransaction(wallet: HDWallet, coin, path: String, txData: Map<String, Any>): String? {
-    val privateKey = wallet.getKey(coin, path)
+  private fun signBitcoinTransaction(wallet: HDWallet, coin, txData: Map<String, Any>): String? {
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
 
     val input = Bitcoin.SigningInput.newBuilder()
@@ -462,9 +461,10 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             .setToAddress(txData["toAddress"] as String)
             .setChangeAddress(txData["changeAddress"] as String)
             .setByteFee(1)
-            .addPrivateKey(ByteString.copyFrom(privateKey.data()))
 
     for (utx in utxos) {
+      val privateKey = wallet.getKey(coin, txData["path"])
+      input = input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
       val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
       txHash.reverse();
       val outPoint = Bitcoin.OutPoint.newBuilder()

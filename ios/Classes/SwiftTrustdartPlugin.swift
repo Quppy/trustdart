@@ -429,7 +429,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     }
 
     func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, path: String, txData:  [String: Any]) -> String? {
-        let privateKey = wallet.getKey(coin: coin, derivationPath: path)
+        let privateKey = []
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
         var unspent: [BitcoinUnspentTransaction] = []
         
@@ -441,13 +441,14 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 $0.amount = utx["value"] as! Int64
                 $0.script = Data(hexString: utx["script"] as! String)!
             })
+            privateKey.append(wallet.getKey(coin: coin, derivationPath: utx["path"]).data)
         }
         let input: BitcoinSigningInput = BitcoinSigningInput.with {
             $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String // can be same sender address
-            $0.privateKey = [privateKey.data]
+            $0.privateKey = privateKey.data
             $0.plan = BitcoinTransactionPlan.with {
                 $0.amount = txData["amount"] as! Int64
                 $0.fee = txData["fees"] as! Int64
