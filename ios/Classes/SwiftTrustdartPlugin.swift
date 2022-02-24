@@ -269,11 +269,11 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoin, path: path, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoin, txData: txData)
         case "LTC":
-            txHash = signBitcoinTransaction(wallet: wallet, coin: .litecoin, path: path, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .litecoin, txData: txData)
         case "BCH":
-            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoinCash, path: path, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoinCash, txData: txData)
         case "ETH":
             txHash = signEthereumTransaction(wallet: wallet, path: path, txData: txData)
         case "XTZ":
@@ -428,7 +428,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         return txHash
     }
 
-    func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, path: String, txData:  [String: Any]) -> String? {
+    func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, txData:  [String: Any]) -> String? {
         let privateKey = []
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
         var unspent: [BitcoinUnspentTransaction] = []
