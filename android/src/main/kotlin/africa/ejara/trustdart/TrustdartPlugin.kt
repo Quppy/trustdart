@@ -18,13 +18,12 @@ import wallet.core.jni.BitcoinAddress
 import wallet.core.java.AnySigner
 
 import wallet.core.jni.BitcoinScript
-import wallet.core.jni.BitcoinSigHashType
 import wallet.core.jni.proto.Bitcoin
 import wallet.core.jni.proto.Tron
-import wallet.core.jni.proto.Bitcoin.SigningOutput
-import wallet.core.jni.proto.Common.SigningError
+import wallet.core.jni.proto.Ethereum
 
-import africa.ejara.trustdart.Numeric
+import android.os.Build
+import androidx.annotation.RequiresApi
 
 /** TrustdartPlugin */
 class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
@@ -44,11 +43,12 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     channel.setMethodCallHandler(this)
   }
 
+  @RequiresApi(Build.VERSION_CODES.O)
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     when(call.method) {
       "generateMnemonic" -> {
         val passphrase: String = call.arguments()
-        val wallet: HDWallet = HDWallet(128, passphrase)
+        val wallet: HDWallet? = HDWallet(128, passphrase)
 
         if (wallet != null) {
           result.success(wallet.mnemonic())
@@ -61,7 +61,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
         if (mnemonic != null) {
-          val wallet: HDWallet = HDWallet(mnemonic, passphrase)
+          val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
             result.success(true)
@@ -79,7 +79,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
         if (path != null && coin != null && mnemonic != null) {
-          val wallet: HDWallet = HDWallet(mnemonic, passphrase)
+          val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
             val address: Map<String, String?>? = generateAddress(wallet, path, coin)
@@ -109,7 +109,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val passphrase: String? = call.argument("passphrase")
         val txData: Map<String, Any>? = call.argument("txData")
         if (txData != null && coin != null && path != null && mnemonic != null) {
-          val wallet: HDWallet = HDWallet(mnemonic, passphrase)
+          val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
             val txHash: String? = signTransaction(wallet, coin, path, txData)
@@ -128,7 +128,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
         if (path != null && coin != null && mnemonic != null) {
-          val wallet: HDWallet = HDWallet(mnemonic, passphrase)
+          val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
             val publicKey: String? = getPublicKey(wallet, coin, path)
@@ -147,7 +147,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
         if (path != null && coin != null && mnemonic != null) {
-          val wallet: HDWallet = HDWallet(mnemonic, passphrase)
+          val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
             val privateKey: String? = getPrivateKey(wallet, coin, path)
@@ -217,6 +217,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
+  @RequiresApi(Build.VERSION_CODES.O)
   private fun getPublicKey(wallet: HDWallet, coin: String, path: String): String? {
     return when(coin) {
       "BTC" -> {
@@ -248,6 +249,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
+  @RequiresApi(Build.VERSION_CODES.O)
   private fun getPrivateKey(wallet: HDWallet, coin: String, path: String): String? {
     return when(coin) {
       "BTC" -> {
@@ -439,9 +441,27 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private fun signEthereumTransaction(wallet: HDWallet, path: String, txData: Map<String, Any>): String? {
-    val privateKey = wallet.getKey(CoinType.ETHEREUM, path)
-    val opJson =  JSONObject(txData).toString();
-    val result = AnySigner.signJSON(opJson, privateKey.data(), CoinType.ETHEREUM.value())
+    var key = wallet.getKey(CoinType.ETHEREUM, "m/44$path")
+    val address: String = CoinType.ETHEREUM.deriveAddress(key)
+    if(address.lowercase() != (txData["fromAddress"] as String).lowercase()) {
+      key = wallet.getKey(CoinType.ETHEREUM, "m/49$path")
+    }
+    val signerInput = Ethereum.SigningInput.newBuilder().apply {
+          gasPrice = ByteString.copyFrom(Numeric.hexStringToByteArray(txData["gasPrice"] as String))
+          gasLimit = ByteString.copyFrom(Numeric.hexStringToByteArray(txData["gasLimit"] as String))
+          chainId = ByteString.copyFrom(Numeric.hexStringToByteArray(txData["chainId"] as String))
+          nonce = ByteString.copyFrom(Numeric.hexStringToByteArray(txData["nonce"] as String))
+          toAddress = txData["toAddress"] as String
+          transaction = Ethereum.Transaction.newBuilder().apply {
+            transfer = Ethereum.Transaction.Transfer.newBuilder().apply {
+                amount = ByteString.copyFrom(Numeric.hexStringToByteArray(txData["amount"] as String))
+            }.build()
+          }.build()
+
+          privateKey = ByteString.copyFrom(key.data())
+      }.build()
+    val output = AnySigner.sign(signerInput, CoinType.ETHEREUM, Ethereum.SigningOutput.parser())
+    val result = Numeric.toHexString(output.encoded.toByteArray())
     return result
   }
 
@@ -452,7 +472,8 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     return result
   }
 
-  private fun signBitcoinTransaction(wallet: HDWallet, coin, txData: Map<String, Any>): String? {
+  private fun signBitcoinTransaction(wallet: HDWallet, coin: CoinType, txData: Map<String, Any>): String? {
+    @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
 
     val input = Bitcoin.SigningInput.newBuilder()
@@ -463,7 +484,8 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             .setByteFee(1)
 
     for (utx in utxos) {
-      val privateKey = wallet.getKey(coin, txData["path"])
+      val privateKey = wallet.getKey(coin, utx["path"] as String)
+      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
       val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
       txHash.reverse();
       val outPoint = Bitcoin.OutPoint.newBuilder()
@@ -477,7 +499,6 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
               .setOutPoint(outPoint)
               .setScript(ByteString.copyFrom(txScript))
               .build()
-      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
       input.addUtxo(utxo)
     }
 

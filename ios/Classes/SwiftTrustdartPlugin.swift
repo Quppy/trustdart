@@ -304,10 +304,29 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
       }
 
     func signEthereumTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
-        let privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: path)
-        let opJson =  objToJson(from:txData)
-        let result = AnySigner.signJSON(opJson!, key: privateKey.data, coin: CoinType.ethereum)
-        return result
+        var privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/44" + path)
+        let address = CoinType.ethereum.deriveAddress(privateKey: privateKey)
+        if address.lowercased() != (txData["fromAddress"] as! String).lowercased() {
+            privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/49" + path)
+        }
+        let signerInput = EthereumSigningInput.with {
+            $0.gasPrice = Data(hexString: txData["gasPrice"] as! String)!
+            $0.gasLimit = Data(hexString: txData["gasLimit"] as! String)!
+            $0.chainID = Data(hexString: txData["chainId"] as! String)!
+            $0.nonce = Data(hexString: txData["nonce"] as! String)!
+            $0.toAddress =  txData["toAddress"] as! String
+            $0.transaction = EthereumTransaction.with {
+                $0.transfer = EthereumTransaction.Transfer.with {
+                    $0.amount = Data(hexString: txData["amount"] as! String)!
+                }
+            }
+            $0.privateKey = privateKey.data
+        }
+        let output: EthereumSigningOutput = AnySigner.sign(input: signerInput, coin: .ethereum)
+        // let opJson =  objToJson(from:txData)
+        // let result = AnySigner.signJSON(opJson!, key: privateKey.data, coin: CoinType.ethereum)
+        let resultOther = output.encoded.hexString;
+        return resultOther
       }
     
     func signSolanaTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
@@ -429,35 +448,37 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     }
 
     func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, txData:  [String: Any]) -> String? {
-        let privateKey = []
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
-        var unspent: [BitcoinUnspentTransaction] = []
+        var input: BitcoinSigningInput = BitcoinSigningInput.with {
+            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
+            $0.amount = txData["amount"] as! Int64
+            $0.toAddress = txData["toAddress"] as! String
+            $0.changeAddress = txData["changeAddress"] as! String // can be same sender address
+        }
         
         for utx in utxos {
-            unspent.append(BitcoinUnspentTransaction.with {
+            let utxo = BitcoinUnspentTransaction.with {
                 $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
                 $0.outPoint.index = utx["vout"] as! UInt32
                 $0.outPoint.sequence = UINT32_MAX
                 $0.amount = utx["value"] as! Int64
                 $0.script = Data(hexString: utx["script"] as! String)!
-            })
-            privateKey.append(wallet.getKey(coin: coin, derivationPath: utx["path"]).data)
-        }
-        let input: BitcoinSigningInput = BitcoinSigningInput.with {
-            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
-            $0.amount = txData["amount"] as! Int64
-            $0.toAddress = txData["toAddress"] as! String
-            $0.changeAddress = txData["changeAddress"] as! String // can be same sender address
-            $0.privateKey = privateKey.data
-            $0.plan = BitcoinTransactionPlan.with {
-                $0.amount = txData["amount"] as! Int64
-                $0.fee = txData["fees"] as! Int64
-                $0.change = txData["change"] as! Int64
-                $0.utxos = unspent
             }
+            input.privateKey.append(wallet.getKey(coin: coin, derivationPath: utx["path"] as! String).data)
+            input.utxo.append(utxo);
         }
+
+        let plan: BitcoinTransactionPlan = AnySigner.plan(input: input, coin: coin)
+
+        input.plan = plan;
+
+        input.plan.amount = txData["amount"] as! Int64
+        input.plan.fee = txData["fees"] as! Int64
+        input.plan.change = txData["change"] as! Int64
         
         let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: coin)
-        return output.encoded.hexString
+        let hexString: String = output.encoded.hexString
+
+        return hexString
       }
 }
