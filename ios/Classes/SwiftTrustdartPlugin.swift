@@ -273,7 +273,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         case "LTC":
             txHash = signBitcoinTransaction(wallet: wallet, coin: .litecoin, txData: txData)
         case "BCH":
-            txHash = signBitcoinTransaction(wallet: wallet, coin: .bitcoinCash, txData: txData)
+            txHash = signBitcoinCashTransaction(wallet: wallet, txData: txData)
         case "ETH":
             txHash = signEthereumTransaction(wallet: wallet, path: path, txData: txData)
         case "XTZ":
@@ -457,12 +457,25 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         }
         
         for utx in utxos {
+            var script: BitcoinScript
+            let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
+            if bs.isPayToScriptHash {
+                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
+            if bs.isPayToWitnessScriptHash {
+                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
+            if bs.isPayToWitnessPublicKeyHash {
+                script = BitcoinScript.buildPayToWitnessPubkeyHash(hash: Data(hexString: utx["script"] as! String)!)
+            } else {
+                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
             let utxo = BitcoinUnspentTransaction.with {
                 $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
                 $0.outPoint.index = utx["vout"] as! UInt32
                 $0.outPoint.sequence = UINT32_MAX
                 $0.amount = utx["value"] as! Int64
-                $0.script = Data(hexString: utx["script"] as! String)!
+                $0.script = script.data
             }
             input.privateKey.append(wallet.getKey(coin: coin, derivationPath: utx["path"] as! String).data)
             input.utxo.append(utxo);
@@ -480,5 +493,43 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         let hexString: String = output.encoded.hexString
 
         return hexString
-      }
+    }
+
+    func signBitcoinCashTransaction(wallet: HDWallet, txData:  [String: Any]) -> String? {
+        let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
+        var unspent: [BitcoinUnspentTransaction] = []
+        var privateKeys: [Data] = []
+        
+        for utx in utxos {
+            unspent.append(BitcoinUnspentTransaction.with {
+                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                $0.outPoint.index = utx["vout"] as! UInt32
+                $0.outPoint.sequence = UINT32_MAX
+                $0.amount = utx["value"] as! Int64
+                $0.script = Data(hexString: utx["script"] as! String)!
+            })
+            let key = wallet.getKey(coin: .bitcoinCash, derivationPath: utx["path"] as! String)
+            privateKeys.append(key.data)
+        }
+        
+        let input: BitcoinSigningInput = BitcoinSigningInput.with {
+            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: .bitcoinCash)
+            $0.amount = txData["amount"] as! Int64
+            $0.toAddress = txData["toAddress"] as! String
+            $0.changeAddress = txData["changeAddress"] as! String
+            $0.privateKey = privateKeys
+            $0.plan = BitcoinTransactionPlan.with {
+                $0.amount = txData["amount"] as! Int64
+                $0.fee = txData["fees"] as! Int64
+                $0.change = txData["change"] as! Int64
+                $0.utxos = unspent
+            }
+        }
+        
+        let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: .bitcoinCash)
+        
+        let hexString: String = output.encoded.hexString
+
+        return hexString
+    }
 }

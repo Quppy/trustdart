@@ -292,7 +292,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         signBitcoinTransaction(wallet, CoinType.LITECOIN, txData)
       }
       "BCH" -> {
-        signBitcoinTransaction(wallet, CoinType.BITCOINCASH, txData)
+        signBitcoinCashTransaction(wallet, txData)
       }
       "TRX" -> {
         signTronTransaction(wallet, path, txData)
@@ -462,7 +462,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
       }.build()
     val output = AnySigner.sign(signerInput, CoinType.ETHEREUM, Ethereum.SigningOutput.parser())
     val result = Numeric.toHexString(output.encoded.toByteArray())
-    return result
+    return "0x$result"
   }
 
   private fun signSolanaTransaction(wallet: HDWallet, path: String, txData: Map<String, Any>): String? {
@@ -513,5 +513,44 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     if (byteFee > 1) input.setByteFee(byteFee)
     output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     return  Numeric.toHexString(output.encoded.toByteArray())
+  }
+
+  private fun signBitcoinCashTransaction(wallet: HDWallet, txData: Map<String, Any>): String? {
+    @Suppress("UNCHECKED_CAST")
+    val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
+
+    val input = Bitcoin.SigningInput.newBuilder()
+            .setAmount((txData["amount"] as Int).toLong())
+            .setHashType(BitcoinScript.hashTypeForCoin(CoinType.BITCOINCASH))
+            .setToAddress(txData["toAddress"] as String)
+            .setChangeAddress(txData["changeAddress"] as String)
+
+    for (utx in utxos) {
+      val privateKey = wallet.getKey(CoinType.BITCOINCASH, utx["path"] as String)
+      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
+      val txHash = Numeric.hexStringToByteArray(utx["txid"] as String)
+        txHash.reverse()
+      val outPoint = Bitcoin.OutPoint.newBuilder()
+              .setHash(ByteString.copyFrom(txHash))
+              .setIndex(utx["vout"] as Int)
+              .setSequence(Long.MAX_VALUE.toInt())
+              .build()
+      val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
+      val utxo = Bitcoin.UnspentTransaction.newBuilder()
+              .setAmount((utx["value"] as Int).toLong())
+              .setOutPoint(outPoint)
+              .setScript(ByteString.copyFrom(txScript))
+              .build()
+      input.addUtxo(utxo)
+    }
+
+    var plan = AnySigner.plan(input.build(), CoinType.BITCOINCASH, Bitcoin.TransactionPlan.parser())
+
+    input.plan = plan
+
+    val output = AnySigner.sign(input.build(), CoinType.BITCOINCASH, Bitcoin.SigningOutput.parser())
+    val hexString = Numeric.toHexString(output.encoded.toByteArray())
+
+    return hexString
   }
 }
