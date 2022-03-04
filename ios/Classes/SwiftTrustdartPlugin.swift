@@ -449,45 +449,54 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
 
     func signBitcoinTransaction(wallet: HDWallet, coin: CoinType, txData:  [String: Any]) -> String? {
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
-        var input: BitcoinSigningInput = BitcoinSigningInput.with {
+        var unspent: [BitcoinUnspentTransaction] = []
+        var privateKeys: [Data] = []
+        var scripts: [String: Data] = [:]
+         
+        for utx in utxos {
+            let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
+            let key = wallet.getKey(coin: coin, derivationPath: utx["path"] as! String)
+            
+            if bs.isPayToScriptHash {
+                let pubkey = key.getPublicKeySecp256k1(compressed: true)
+                let address = CoinType.bitcoin.deriveAddress(privateKey: key)
+                let lockScript = BitcoinScript.lockScriptForAddress(address: address, coin: coin)
+                let scriptHash = lockScript.matchPayToScriptHash()!
+                scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
+                unspent.append(BitcoinUnspentTransaction.with {
+                    $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                    $0.outPoint.index = utx["vout"] as! UInt32
+                    $0.outPoint.sequence = UINT32_MAX
+                    $0.amount = utx["value"] as! Int64
+                    $0.script = lockScript.data
+                })
+            }
+            if bs.isPayToWitnessScriptHash {
+//                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
+            if bs.isPayToWitnessPublicKeyHash {
+//                script = BitcoinScript.buildPayToWitnessPubkeyHash(hash: Data(hexString: utx["script"] as! String)!)
+            } else {
+//                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
+ 
+            privateKeys.append(key.data)
+        }
+        
+        let input: BitcoinSigningInput = BitcoinSigningInput.with {
             $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
-            $0.changeAddress = txData["changeAddress"] as! String // can be same sender address
+            $0.changeAddress = txData["changeAddress"] as! String
+            $0.privateKey = privateKeys
+            $0.scripts = scripts
+            $0.plan = BitcoinTransactionPlan.with {
+                $0.amount = txData["amount"] as! Int64
+                $0.fee = txData["fees"] as! Int64
+                $0.change = txData["change"] as! Int64
+                $0.utxos = unspent
+            }
         }
-        
-        for utx in utxos {
-            var script: BitcoinScript
-            let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
-            if bs.isPayToScriptHash {
-                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
-            }
-            if bs.isPayToWitnessScriptHash {
-                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
-            }
-            if bs.isPayToWitnessPublicKeyHash {
-                script = BitcoinScript.buildPayToWitnessPubkeyHash(hash: Data(hexString: utx["script"] as! String)!)
-            } else {
-                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
-            }
-            let utxo = BitcoinUnspentTransaction.with {
-                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
-                $0.outPoint.index = utx["vout"] as! UInt32
-                $0.outPoint.sequence = UINT32_MAX
-                $0.amount = utx["value"] as! Int64
-                $0.script = script.data
-            }
-            input.privateKey.append(wallet.getKey(coin: coin, derivationPath: utx["path"] as! String).data)
-            input.utxo.append(utxo);
-        }
-
-        let plan: BitcoinTransactionPlan = AnySigner.plan(input: input, coin: coin)
-
-        input.plan = plan;
-
-        input.plan.amount = txData["amount"] as! Int64
-        input.plan.fee = txData["fees"] as! Int64
-        input.plan.change = txData["change"] as! Int64
         
         let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: coin)
         let hexString: String = output.encoded.hexString
