@@ -323,9 +323,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.privateKey = privateKey.data
         }
         let output: EthereumSigningOutput = AnySigner.sign(input: signerInput, coin: .ethereum)
-        // let opJson =  objToJson(from:txData)
-        // let result = AnySigner.signJSON(opJson!, key: privateKey.data, coin: CoinType.ethereum)
-        let resultOther = output.encoded.hexString;
+        let resultOther = "0x" + output.encoded.hexString;
         return resultOther
       }
     
@@ -459,16 +457,22 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             
             if bs.isPayToScriptHash {
                 let pubkey = key.getPublicKeySecp256k1(compressed: true)
-                let address = CoinType.bitcoin.deriveAddress(privateKey: key)
-                let lockScript = BitcoinScript.lockScriptForAddress(address: address, coin: coin)
-                let scriptHash = lockScript.matchPayToScriptHash()!
-                scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
+                let scriptHash = bs.matchPayToScriptHash()!
+
+                if coin == CoinType.litecoin {
+                    let bytesSha256 = Hash.sha256(data: pubkey.data)
+                    let bytesRipemd160 = Hash.ripemd(data: bytesSha256)
+                    scripts[scriptHash.hexString] = BitcoinScript.buildPayToPublicKeyHash(hash: bytesRipemd160).data
+                } else {
+                    scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
+                }
+                
                 unspent.append(BitcoinUnspentTransaction.with {
                     $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
                     $0.outPoint.index = utx["vout"] as! UInt32
                     $0.outPoint.sequence = UINT32_MAX
                     $0.amount = utx["value"] as! Int64
-                    $0.script = lockScript.data
+                    $0.script = bs.data
                 })
             }
             if bs.isPayToWitnessScriptHash {
@@ -488,6 +492,8 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String
+            $0.coinType = coin.rawValue
+//            $0.byteFee = txData["byteFee"] as! Int64
             $0.privateKey = privateKeys
             $0.scripts = scripts
             $0.plan = BitcoinTransactionPlan.with {
