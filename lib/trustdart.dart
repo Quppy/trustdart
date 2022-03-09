@@ -117,4 +117,20 @@ class Trustdart {
       return '';
     }
   }
+
+  ///signs a simple transaction
+  static Future<String> signTransactionSimple(
+      String privateString, String coin,  Map txData) async {
+    try {
+      final String txHash =
+          await _channel.invokeMethod('signTransaction', <String, dynamic>{
+        'coin': coin,
+        'txData': txData,
+        'privateString': privateString,
+      });
+      return txHash;
+    } catch (e) {
+      return '';
+    }
+  }
 }
