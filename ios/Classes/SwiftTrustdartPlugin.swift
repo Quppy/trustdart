@@ -483,7 +483,6 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 })
             }
             if bs.isPayToWitnessScriptHash {
-                script = bs.matchPayTo
 //                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
             }
             if bs.isPayToWitnessPublicKeyHash {
@@ -576,7 +575,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String
-            $0.privateKey = privateKey.data
+            $0.privateKey = [privateKey.data]
             $0.plan = BitcoinTransactionPlan.with {
                 $0.amount = txData["amount"] as! Int64
                 $0.fee = txData["fees"] as! Int64
