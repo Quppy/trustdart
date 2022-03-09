@@ -93,7 +93,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                     let wallet = HDWallet(mnemonic: mnemonic!, passphrase: passphrase!)
                     
                     if wallet != nil {
-                        let txHash: String? = signTransaction(wallet: wallet!, coin: coin!, path: path!, txData: txData!)
+                        let txHash: String? = signHDTransaction(wallet: wallet!, coin: coin!, path: path!, txData: txData!)
                         if txHash == nil {
                             result(FlutterError(code: "txhash_null",
                                                 message: "Failed to buid and sign transaction",
@@ -108,7 +108,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                     }
                 } else {
                     if coin != nil && path != nil && txData != nil && privateString != nil {
-                        let txHash: String? = signBitcoinSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!)
+                        let txHash: String? = signSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!)
                     } else {
                         result(FlutterError(code: "arguments_null",
                                             message: "[coin], [path], [txData] and [privateString] or [mnemonic] cannot be null",
@@ -270,7 +270,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         return privateKey;
     }
     
-    func signTransaction(wallet: HDWallet, coin: String, path: String, txData: [String: Any]) -> String? {
+    func signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: [String: Any]) -> String? {
         var txHash: String?
         switch coin {
         case "BTC":
@@ -287,6 +287,22 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             txHash = signTronTransaction(wallet: wallet, path: path, txData: txData)
         case "SOL":
             txHash = signSolanaTransaction(wallet: wallet, path: path, txData: txData)
+        default:
+            txHash = nil
+        }
+        return txHash
+
+    }
+    
+    func signSimpleTransaction(privateString: String, txData: [String: Any]) -> String? {
+        var txHash: String?
+        switch coin {
+        case "BTC":
+            txHash = signBitcoinSimpleTransaction(privateString: privateString, coin: .bitcoin, txData: txData)
+        case "LTC":
+            txHash = signBitcoinSimpleTransaction(privateString: privateString, coin: .litecoin, txData: txData)
+        case "BCH":
+            txHash = signBitcoinSimpleTransaction(privateString: privateString, coin: .bitcoinCash, txData: txData)
         default:
             txHash = nil
         }
