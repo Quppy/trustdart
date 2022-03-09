@@ -454,7 +454,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         for utx in utxos {
             let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
             let key = wallet.getKey(coin: coin, derivationPath: utx["path"] as! String)
-            
+      
             if bs.isPayToScriptHash {
                 let pubkey = key.getPublicKeySecp256k1(compressed: true)
                 let scriptHash = bs.matchPayToScriptHash()!
@@ -466,24 +466,15 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 } else {
                     scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
                 }
-                
-                unspent.append(BitcoinUnspentTransaction.with {
-                    $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
-                    $0.outPoint.index = utx["vout"] as! UInt32
-                    $0.outPoint.sequence = UINT32_MAX
-                    $0.amount = utx["value"] as! Int64
-                    $0.script = bs.data
-                })
-            }
-            if bs.isPayToWitnessScriptHash {
-//                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
-            }
-            if bs.isPayToWitnessPublicKeyHash {
-//                script = BitcoinScript.buildPayToWitnessPubkeyHash(hash: Data(hexString: utx["script"] as! String)!)
-            } else {
-//                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
             }
  
+            unspent.append(BitcoinUnspentTransaction.with {
+                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                $0.outPoint.index = utx["vout"] as! UInt32
+                $0.outPoint.sequence = UINT32_MAX
+                $0.amount = utx["value"] as! Int64
+                $0.script = bs.data
+            })
             privateKeys.append(key.data)
         }
         
