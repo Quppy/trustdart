@@ -88,6 +88,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 let txData: [String: Any]? = args["txData"] as? [String: Any]
                 let mnemonic: String? = args["mnemonic"] as? String
                 let passphrase: String? = args["passphrase"] as? String
+                let privateString: String? = args["privateString"] as? String
                 if coin != nil && path != nil && txData != nil && mnemonic != nil {
                     let wallet = HDWallet(mnemonic: mnemonic!, passphrase: passphrase!)
                     
@@ -106,9 +107,13 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                                             details: nil))
                     }
                 } else {
-                    result(FlutterError(code: "arguments_null",
-                                        message: "[coin], [path] and [txData] cannot be null",
-                                        details: nil))
+                    if coin != nil && path != nil && txData != nil && privateString != nil {
+                        let txHash: String? = signBitcoinSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!)
+                    } else {
+                        result(FlutterError(code: "arguments_null",
+                                            message: "[coin], [path], [txData] and [privateString] or [mnemonic] cannot be null",
+                                            details: nil))
+                    }
                 }
             case "getPublicKey":
                 let args = call.arguments as! [String: String]
@@ -306,8 +311,10 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     func signEthereumTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
         var privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/44" + path)
         let address = CoinType.ethereum.deriveAddress(privateKey: privateKey)
+        var addr = ""
         if address.lowercased() != (txData["fromAddress"] as! String).lowercased() {
             privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/49" + path)
+            addr = CoinType.ethereum.deriveAddress(privateKey: privateKey)
         }
         let signerInput = EthereumSigningInput.with {
             $0.gasPrice = Data(hexString: txData["gasPrice"] as! String)!
@@ -454,7 +461,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         for utx in utxos {
             let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
             let key = wallet.getKey(coin: coin, derivationPath: utx["path"] as! String)
-      
+            
             if bs.isPayToScriptHash {
                 let pubkey = key.getPublicKeySecp256k1(compressed: true)
                 let scriptHash = bs.matchPayToScriptHash()!
@@ -466,15 +473,25 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 } else {
                     scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
                 }
+                
+                unspent.append(BitcoinUnspentTransaction.with {
+                    $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                    $0.outPoint.index = utx["vout"] as! UInt32
+                    $0.outPoint.sequence = UINT32_MAX
+                    $0.amount = utx["value"] as! Int64
+                    $0.script = bs.data
+                })
+            }
+            if bs.isPayToWitnessScriptHash {
+                script = bs.matchPayTo
+//                script = BitcoinScript.buildPayToWitnessScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
+            }
+            if bs.isPayToWitnessPublicKeyHash {
+//                script = BitcoinScript.buildPayToWitnessPubkeyHash(hash: Data(hexString: utx["script"] as! String)!)
+            } else {
+//                script = BitcoinScript.buildPayToScriptHash(scriptHash: Data(hexString: utx["script"] as! String)!)
             }
  
-            unspent.append(BitcoinUnspentTransaction.with {
-                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
-                $0.outPoint.index = utx["vout"] as! UInt32
-                $0.outPoint.sequence = UINT32_MAX
-                $0.amount = utx["value"] as! Int64
-                $0.script = bs.data
-            })
             privateKeys.append(key.data)
         }
         
@@ -533,6 +550,42 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         }
         
         let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: .bitcoinCash)
+        
+        let hexString: String = output.encoded.hexString
+
+        return hexString
+    }
+    
+    func signBitcoinSimpleTransaction(privateString: String, coin: CoinType, txData:  [String: Any]) -> String? {
+        let privateKey = PrivateKey(data: Data(hexString: privateString)!)!
+        let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
+        var unspent: [BitcoinUnspentTransaction] = []
+        
+        for utx in utxos {
+            unspent.append(BitcoinUnspentTransaction.with {
+                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                $0.outPoint.index = utx["vout"] as! UInt32
+                $0.outPoint.sequence = UINT32_MAX
+                $0.amount = utx["value"] as! Int64
+                $0.script = Data(hexString: utx["script"] as! String)!
+            })
+        }
+        
+        let input: BitcoinSigningInput = BitcoinSigningInput.with {
+            $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
+            $0.amount = txData["amount"] as! Int64
+            $0.toAddress = txData["toAddress"] as! String
+            $0.changeAddress = txData["changeAddress"] as! String
+            $0.privateKey = privateKey.data
+            $0.plan = BitcoinTransactionPlan.with {
+                $0.amount = txData["amount"] as! Int64
+                $0.fee = txData["fees"] as! Int64
+                $0.change = txData["change"] as! Int64
+                $0.utxos = unspent
+            }
+        }
+        
+        let output: BitcoinSigningOutput = AnySigner.sign(input: input, coin: coin)
         
         let hexString: String = output.encoded.hexString
 
