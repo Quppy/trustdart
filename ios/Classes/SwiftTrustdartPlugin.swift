@@ -107,11 +107,18 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                                             details: nil))
                     }
                 } else {
-                    if coin != nil && path != nil && txData != nil && privateString != nil {
+                    if coin != nil && txData != nil && privateString != nil {
                         let txHash: String? = signSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!)
+                        if txHash == nil {
+                            result(FlutterError(code: "txhash_null",
+                                                message: "Failed to buid and sign transaction",
+                                                details: nil))
+                        } else {
+                            result(txHash)
+                        }
                     } else {
                         result(FlutterError(code: "arguments_null",
-                                            message: "[coin], [path], [txData] and [privateString] or [mnemonic] cannot be null",
+                                            message: "[coin], [txData] and [path] or [privateString] or [mnemonic] cannot be null",
                                             details: nil))
                     }
                 }
@@ -327,10 +334,8 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     func signEthereumTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
         var privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/44" + path)
         let address = CoinType.ethereum.deriveAddress(privateKey: privateKey)
-        var addr = ""
         if address.lowercased() != (txData["fromAddress"] as! String).lowercased() {
             privateKey = wallet.getKey(coin: CoinType.ethereum, derivationPath: "m/49" + path)
-            addr = CoinType.ethereum.deriveAddress(privateKey: privateKey)
         }
         let signerInput = EthereumSigningInput.with {
             $0.gasPrice = Data(hexString: txData["gasPrice"] as! String)!
@@ -590,12 +595,10 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
-            $0.changeAddress = txData["changeAddress"] as! String
             $0.privateKey = [privateKey.data]
             $0.plan = BitcoinTransactionPlan.with {
                 $0.amount = txData["amount"] as! Int64
                 $0.fee = txData["fees"] as! Int64
-                $0.change = txData["change"] as! Int64
                 $0.utxos = unspent
             }
         }
