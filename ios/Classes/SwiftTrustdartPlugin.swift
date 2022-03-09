@@ -294,7 +294,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
 
     }
     
-    func signSimpleTransaction(privateString: String, txData: [String: Any]) -> String? {
+    func signSimpleTransaction(privateString: String, coin: String, txData: [String: Any]) -> String? {
         var txHash: String?
         switch coin {
         case "BTC":
