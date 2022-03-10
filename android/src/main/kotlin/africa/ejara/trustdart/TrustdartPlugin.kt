@@ -112,7 +112,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
-            val txHash: String? = signTransaction(wallet, coin, path, txData)
+            val txHash: String? = signHDTransaction(wallet, coin, path, txData)
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("no_wallet",
@@ -277,7 +277,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>): String? {
+  private fun signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>): String? {
     return when(coin) {
       "XTZ" -> {
         signTezosTransaction(wallet, path, txData)
@@ -286,10 +286,10 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         signEthereumTransaction(wallet, path, txData)
       }
       "BTC" -> {
-        signBitcoinTransaction(wallet, CoinType.BITCOIN, txData)
+        signBitcoinHDTransaction(wallet, CoinType.BITCOIN, txData)
       }
       "LTC" -> {
-        signBitcoinTransaction(wallet, CoinType.LITECOIN, txData)
+        signBitcoinHDTransaction(wallet, CoinType.LITECOIN, txData)
       }
       "BCH" -> {
         signBitcoinCashTransaction(wallet, txData)
@@ -472,7 +472,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     return result
   }
 
-  private fun signBitcoinTransaction(wallet: HDWallet, coin: CoinType, txData: Map<String, Any>): String? {
+  private fun signBitcoinHDTransaction(wallet: HDWallet, coin: CoinType, txData: Map<String, Any>): String? {
     @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
 
@@ -481,38 +481,45 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             .setHashType(BitcoinScript.hashTypeForCoin(coin))
             .setToAddress(txData["toAddress"] as String)
             .setChangeAddress(txData["changeAddress"] as String)
-            .setByteFee(1)
+            // .setByteFee(txData["changeAddress"] as Int)
 
     for (utx in utxos) {
-      val privateKey = wallet.getKey(coin, utx["path"] as String)
-      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
+      val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
+      val bs = BitcoinScript(data: txScriptxHash.data())
+      val key = wallet.getKey(coin, utx["path"] as String)
+      if (bs.isPayToScriptHash) {
+        val pubkey = key.getPublicKeySecp256k1(compressed: true)
+        val scriptHash = bs.matchPayToScriptHash()
+        scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data()
+      }
       val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
       txHash.reverse();
       val outPoint = Bitcoin.OutPoint.newBuilder()
-              .setHash(ByteString.copyFrom(txHash))
-              .setIndex(utx["vout"] as Int)
-              .setSequence(Long.MAX_VALUE.toInt())
-              .build()
-      val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
+        .setHash(ByteString.copyFrom(txHash))
+        .setIndex(utx["vout"] as Int)
+        .setSequence(Long.MAX_VALUE.toInt())
+        .build()
       val utxo = Bitcoin.UnspentTransaction.newBuilder()
-              .setAmount((utx["value"] as Int).toLong())
-              .setOutPoint(outPoint)
-              .setScript(ByteString.copyFrom(txScript))
-              .build()
+        .setAmount((utx["value"] as Int).toLong())
+        .setOutPoint(outPoint)
+        .setScript(ByteString.copyFrom(bs.data()))
+        .build()
       input.addUtxo(utxo)
+      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
     }
 
-    var output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
-    // since we want to set our own fee
-    // but such functionality is not obvious in the trustwalletcore library
-    // a hack is used for now to calculate the byteFee
-    val size = output.encoded.toByteArray().size;
-    val fees =  (txData["fees"] as Int).toLong()
-    val byteFee = fees.div(size) // this gives the fee per byte truncated to Long
-    // now we set new byte size
-    if (byteFee > 1) input.setByteFee(byteFee)
-    output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
-    return  Numeric.toHexString(output.encoded.toByteArray())
+    var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
+    plan.setAmount((txData["amount"] as Int).toLong())
+    plan.setFeeLimit((txData["fees"] as Int).toLong())
+    plan.setChange((txData["change"] as Int).toLong())
+
+    input.plan = plan
+
+
+    val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
+    val hexString = Numeric.toHexString(output.encoded.toByteArray())
+
+    return hexString
   }
 
   private fun signBitcoinCashTransaction(wallet: HDWallet, txData: Map<String, Any>): String? {
