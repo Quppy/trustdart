@@ -577,28 +577,49 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     }
     
     func signBitcoinSimpleTransaction(privateString: String, coin: CoinType, txData:  [String: Any]) -> String? {
-        let privateKey = PrivateKey(data: Data(hexString: privateString)!)!
+        let key = PrivateKey(data: Data(hexString: privateString)!)!
+        let pubkey = key.getPublicKeySecp256k1(compressed: false)
+        let address = BitcoinAddress.compatibleAddress(publicKey: pubkey, prefix: coin.p2shPrefix)
+        print(address.description)
+        
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
         var unspent: [BitcoinUnspentTransaction] = []
+        var privateKeys: [Data] = []
+        var scripts: [String: Data] = [:]
         
         for utx in utxos {
-            unspent.append(BitcoinUnspentTransaction.with {
-                $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
-                $0.outPoint.index = utx["vout"] as! UInt32
-                $0.outPoint.sequence = UINT32_MAX
-                $0.amount = utx["value"] as! Int64
-                $0.script = Data(hexString: utx["script"] as! String)!
-            })
+            let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
+            
+            if bs.isPayToScriptHash {
+                let scriptHash = bs.matchPayToScriptHash()!
+
+                scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
+                
+                unspent.append(BitcoinUnspentTransaction.with {
+                    $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
+                    $0.outPoint.index = utx["vout"] as! UInt32
+                    $0.outPoint.sequence = UINT32_MAX
+                    $0.amount = utx["value"] as! Int64
+                    $0.script = bs.data
+                })
+            }
+
+            privateKeys.append(key.data)
         }
         
         let input: BitcoinSigningInput = BitcoinSigningInput.with {
             $0.hashType = BitcoinScript.hashTypeForCoin(coinType: coin)
             $0.amount = txData["amount"] as! Int64
             $0.toAddress = txData["toAddress"] as! String
-            $0.privateKey = [privateKey.data]
+            $0.changeAddress = txData["changeAddress"] as! String
+            $0.coinType = coin.rawValue
+//          $0.byteFee = txData["byteFee"] as! Int64
+            $0.privateKey = privateKeys
+            $0.scripts = scripts
             $0.plan = BitcoinTransactionPlan.with {
                 $0.amount = txData["amount"] as! Int64
                 $0.fee = txData["fees"] as! Int64
+                $0.change = txData["change"] as! Int64
                 $0.utxos = unspent
             }
         }
