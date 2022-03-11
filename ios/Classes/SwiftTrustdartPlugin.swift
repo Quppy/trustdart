@@ -480,7 +480,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var scripts: [String: Data] = [:]
         var key: PrivateKey
         for utx in utxos {
-            let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
+            let script = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
             if privateString == nil && wallet != nil {
                 // for hd wallet
                 key = wallet!.getKey(coin: coin, derivationPath: utx["path"] as! String)
@@ -488,9 +488,9 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 // for simple wallet
                 key = PrivateKey(data: Data(hexString: privateString!)!)!
             }
-            if bs.isPayToScriptHash {
+            if script.isPayToScriptHash {
                 let pubkey = key.getPublicKeySecp256k1(compressed: false)
-                let scriptHash = bs.matchPayToScriptHash()!
+                let scriptHash = script.matchPayToScriptHash()!
                 scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
                 // if coin == CoinType.litecoin {
                 //     let bytesSha256 = Hash.sha256(data: pubkey.data)
@@ -499,17 +499,16 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 // } else {
                 //     scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
                 // }
-            }
-            if bs.isPayToWitnessScriptHash {
-            }
-            if bs.isPayToWitnessPublicKeyHash {
+            } else if script.isPayToWitnessScriptHash {
+            } else if script.isPayToWitnessPublicKeyHash {
+            } else {
             }
             unspent.append(BitcoinUnspentTransaction.with {
                 $0.outPoint.hash = Data.reverse(hexString: utx["txid"] as! String)
                 $0.outPoint.index = utx["vout"] as! UInt32
                 $0.outPoint.sequence = UINT32_MAX
                 $0.amount = utx["value"] as! Int64
-                $0.script = bs.data
+                $0.script = script.data
             })
             privateKeys.append(key.data)
         }
