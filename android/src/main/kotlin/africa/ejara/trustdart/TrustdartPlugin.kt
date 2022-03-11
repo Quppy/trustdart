@@ -481,17 +481,18 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             .setHashType(BitcoinScript.hashTypeForCoin(coin))
             .setToAddress(txData["toAddress"] as String)
             .setChangeAddress(txData["changeAddress"] as String)
+            .setScript()
             // .setByteFee(txData["changeAddress"] as Int)
 
     for (utx in utxos) {
       val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
-      val bs = BitcoinScript(data: txScriptxHash.data())
+      var script = BitcoinScript(txScript)
       val key = wallet.getKey(coin, utx["path"] as String)
-      if (bs.isPayToScriptHash) {
-        val pubkey = key.getPublicKeySecp256k1(compressed: true)
-        val scriptHash = bs.matchPayToScriptHash()
-        scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data()
-      }
+//      if (script.isPayToScriptHash) {
+//        val pubkey = key.getPublicKeySecp256k1(true)
+//        val scriptHash = script.matchPayToScriptHash()
+//        script = BitcoinScript.buildPayToWitnessPubkeyHash(pubkey.data())
+//      }
       val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
       txHash.reverse();
       val outPoint = Bitcoin.OutPoint.newBuilder()
@@ -502,19 +503,15 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
       val utxo = Bitcoin.UnspentTransaction.newBuilder()
         .setAmount((utx["value"] as Int).toLong())
         .setOutPoint(outPoint)
-        .setScript(ByteString.copyFrom(bs.data()))
+        .setScript(ByteString.copyFrom(txScript))
         .build()
       input.addUtxo(utxo)
-      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
+      input.addPrivateKey(ByteString.copyFrom(key.data()))
     }
 
     var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
-    plan.setAmount((txData["amount"] as Int).toLong())
-    plan.setFeeLimit((txData["fees"] as Int).toLong())
-    plan.setChange((txData["change"] as Int).toLong())
 
     input.plan = plan
-
 
     val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
