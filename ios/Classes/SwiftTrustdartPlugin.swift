@@ -532,8 +532,10 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var unspent: [BitcoinUnspentTransaction] = []
         var privateKeys: [Data] = []
         var scripts: [String: Data] = [:]
+
         let key = PrivateKey(data: Data(hexString: privateString)!)!
         let pubkey = key.getPublicKeySecp256k1(compressed: false)
+        
         for utx in utxos {
             let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
             if bs.isPayToScriptHash {

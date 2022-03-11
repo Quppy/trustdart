@@ -108,6 +108,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val path: String? = call.argument("path")
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
+        val privateString: String? = call.argument("privateString")
         val txData: Map<String, Any>? = call.argument("txData")
         if (txData != null && coin != null && path != null && mnemonic != null) {
           val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
@@ -120,7 +121,12 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
                     "Could not generate wallet, why?", null)
           }
         } else {
-          result.error("arguments_null", "[txData], [coin] and [path] and [mnemonic] cannot be null", null)
+          if (txData != null && coin != null && privateString != null) {
+            val txHash: String? = signSimpleTransaction(privateString, coin, txData)
+            if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
+          } else {
+            result.error("arguments_null", "[txData], [coin] and [path] and [mnemonic] cannot be null", null)
+          }
         }
       }
       "getPublicKey" -> {
@@ -305,6 +311,21 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
+  private fun signSimpleTransaction(privateString: String, coin: String, path: String, txData: Map<String, Any>): String? {
+    return when(coin) {
+      "BTC" -> {
+        signBitcoinSimpleTransaction(privateString, CoinType.BITCOIN, txData)
+      }
+      "LTC" -> {
+        signBitcoinSimpleTransaction(privateString, CoinType.LITECOIN, txData)
+      }
+      "BCH" -> {
+        signBitcoinSimpleTransaction(privateString, CoinType.BITCOINCASH, txData)
+      }
+      else -> null
+    }
+  }
+
   private fun signTronTransaction(wallet: HDWallet, path: String, txData: Map<String, Any>): String? {
     val cmd = txData["cmd"] as String
     val privateKey = wallet.getKey(CoinType.TRON, path)
@@ -483,7 +504,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         this.toAddress = txData["toAddress"] as String
         this.changeAddress = txData["changeAddress"] as String
         this.coinType = coin.value()
-        this.byteFee = 1 //(txData["changeAddress"] as Int).toLong()
+        // this.byteFee = (txData["changeAddress"] as Int).toLong()
     }
 
     for (utx in utxos) {
@@ -496,7 +517,11 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             val pubkeySha256RIPEMD = Hash.sha256RIPEMD(pubkey.data())
             input.putScripts(scriptHashString, ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkeySha256RIPEMD).data()))
         }
-        val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
+        if (script.isPayToWitnessScriptHash) {
+        }
+        if (script.isPayToWitnessPublicKeyHash) {
+        }
+    val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
         txHash.reverse();
         val outPoint = Bitcoin.OutPoint.newBuilder().apply {
             this.hash = ByteString.copyFrom(txHash)
@@ -510,16 +535,63 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         }.build()
         input.addUtxo(utxo)
         input.addPrivateKey(ByteString.copyFrom(key.data()))
-        print(utxo)
     }
-
-    print(input)
 
     var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
 
     input.plan = plan
 
-    print(input)
+    val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
+    val hexString = Numeric.toHexString(output.encoded.toByteArray())
+
+    return hexString
+  }
+
+  private fun signBitcoinSimpleTransaction(privateString: String, coin: CoinType, txData: Map<String, Any>): String? {
+    @Suppress("UNCHECKED_CAST")
+    val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
+    val key: PrivateKey = PrivateKey(Numeric.hexStringToByteArray(privateKey as String))
+    val pubkey = key.getPublicKeySecp256k1(true)
+    val input = Bitcoin.SigningInput.newBuilder().apply {
+        this.amount = (txData["amount"] as Int).toLong()
+        this.hashType = BitcoinScript.hashTypeForCoin(coin)
+        this.toAddress = txData["toAddress"] as String
+        this.changeAddress = txData["changeAddress"] as String
+        this.coinType = coin.value()
+        // this.byteFee = (txData["changeAddress"] as Int).toLong()
+    }
+
+    for (utx in utxos) {
+        var script = BitcoinScript(Numeric.hexStringToByteArray(utx["script"] as String))
+        if (script.isPayToScriptHash) {
+            val scriptHash = script.matchPayToScriptHash()
+            val scriptHashString = Numeric.toHexString(scriptHash)
+            val pubkeySha256RIPEMD = Hash.sha256RIPEMD(pubkey.data())
+            input.putScripts(scriptHashString, ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkeySha256RIPEMD).data()))
+        }
+        if (script.isPayToWitnessScriptHash) {
+        }
+        if (script.isPayToWitnessPublicKeyHash) {
+        }
+    val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
+        txHash.reverse();
+        val outPoint = Bitcoin.OutPoint.newBuilder().apply {
+            this.hash = ByteString.copyFrom(txHash)
+            this.index = utx["vout"] as Int
+            this.sequence = Long.MAX_VALUE.toInt()
+        }.build()
+        val utxo = Bitcoin.UnspentTransaction.newBuilder().apply {
+            this.amount = (utx["value"] as Int).toLong()
+            this.outPoint = outPoint
+            this.script = ByteString.copyFrom(script.data())
+        }.build()
+        input.addUtxo(utxo)
+        input.addPrivateKey(ByteString.copyFrom(key.data()))
+    }
+
+    var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
+
+    input.plan = plan
 
     val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
