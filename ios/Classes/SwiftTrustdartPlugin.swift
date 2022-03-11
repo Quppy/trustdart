@@ -281,11 +281,11 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(wallet: wallet, nil, coin: .bitcoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoin, txData: txData)
         case "LTC":
-            txHash = signBitcoinTransaction(wallet: wallet, nil, coin: .litecoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .litecoin, txData: txData)
         case "BCH":
-            txHash = signBitcoinTransaction(wallet: wallet, nil, coin: .bitcoinCash, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoinCash, txData: txData)
         case "ETH":
             txHash = signEthereumTransaction(wallet: wallet, path: path, txData: txData)
         case "XTZ":
@@ -305,11 +305,11 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(nil, privateString: privateString, coin: .bitcoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoin, txData: txData)
         case "LTC":
-            txHash = signBitcoinTransaction(nil, privateString: privateString, coin: .litecoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .litecoin, txData: txData)
         case "BCH":
-            txHash = signBitcoinTransaction(nil, privateString: privateString, coin: .bitcoinCash, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoinCash, txData: txData)
         default:
             txHash = nil
         }
@@ -478,16 +478,15 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         var unspent: [BitcoinUnspentTransaction] = []
         var privateKeys: [Data] = []
         var scripts: [String: Data] = [:]
-        // for simple wallet
-        if privateString != nil && wallet == nil {
-            let key = PrivateKey(data: Data(hexString: privateString)!)!
-        }
-        
+        var key: PrivateKey
         for utx in utxos {
             let bs = BitcoinScript(data: Data(hexString: utx["script"] as! String)!)
-            // for hd wallet
             if privateString == nil && wallet != nil {
-                let key = wallet.getKey(coin: coin, derivationPath: utx["path"] as! String)
+                // for hd wallet
+                key = wallet!.getKey(coin: coin, derivationPath: utx["path"] as! String)
+            } else {
+                // for simple wallet
+                key = PrivateKey(data: Data(hexString: privateString!)!)!
             }
             if bs.isPayToScriptHash {
                 let pubkey = key.getPublicKeySecp256k1(compressed: false)
