@@ -17,6 +17,7 @@ import wallet.core.jni.CoinType
 import wallet.core.jni.BitcoinAddress
 import wallet.core.java.AnySigner
 import wallet.core.jni.Hash
+import wallet.core.jni.PrivateKey
 
 import wallet.core.jni.BitcoinScript
 import wallet.core.jni.proto.Bitcoin
@@ -311,7 +312,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signSimpleTransaction(privateString: String, coin: String, path: String, txData: Map<String, Any>): String? {
+  private fun signSimpleTransaction(privateString: String, coin: String, txData: Map<String, Any>): String? {
     return when(coin) {
       "BTC" -> {
         signBitcoinSimpleTransaction(privateString, CoinType.BITCOIN, txData)
@@ -550,7 +551,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
   private fun signBitcoinSimpleTransaction(privateString: String, coin: CoinType, txData: Map<String, Any>): String? {
     @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
-    val key: PrivateKey = PrivateKey(Numeric.hexStringToByteArray(privateKey as String))
+    val key: PrivateKey = PrivateKey(Numeric.hexStringToByteArray(privateString as String))
     val pubkey = key.getPublicKeySecp256k1(true)
     val input = Bitcoin.SigningInput.newBuilder().apply {
         this.amount = (txData["amount"] as Int).toLong()
