@@ -16,6 +16,7 @@ import wallet.core.jni.HDWallet
 import wallet.core.jni.CoinType
 import wallet.core.jni.BitcoinAddress
 import wallet.core.java.AnySigner
+import wallet.core.jni.Hash
 
 import wallet.core.jni.BitcoinScript
 import wallet.core.jni.proto.Bitcoin
@@ -491,7 +492,9 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         if (script.isPayToScriptHash) {
             val pubkey = key.getPublicKeySecp256k1(true)
             val scriptHash = script.matchPayToScriptHash()
-            input.putScripts(Numeric.toHexString(scriptHash), ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkey.data()).data()))
+            val scriptHashString = Numeric.toHexString(scriptHash)
+            val pubkeySha256RIPEMD = Hash.sha256RIPEMD(pubkey.data())
+            input.putScripts(scriptHashString, ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkeySha256RIPEMD).data()))
         }
         val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
         txHash.reverse();
