@@ -476,42 +476,47 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
 
-    val input = Bitcoin.SigningInput.newBuilder()
-            .setAmount((txData["amount"] as Int).toLong())
-            .setHashType(BitcoinScript.hashTypeForCoin(coin))
-            .setToAddress(txData["toAddress"] as String)
-            .setChangeAddress(txData["changeAddress"] as String)
-            .setScript()
-            // .setByteFee(txData["changeAddress"] as Int)
+    val input = Bitcoin.SigningInput.newBuilder().apply {
+        this.amount = (txData["amount"] as Int).toLong()
+        this.hashType = BitcoinScript.hashTypeForCoin(coin)
+        this.toAddress = txData["toAddress"] as String
+        this.changeAddress = txData["changeAddress"] as String
+        this.coinType = coin.value()
+        this.byteFee = 1 //(txData["changeAddress"] as Int).toLong()
+    }
 
     for (utx in utxos) {
-      val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
-      var script = BitcoinScript(txScript)
-      val key = wallet.getKey(coin, utx["path"] as String)
-//      if (script.isPayToScriptHash) {
-//        val pubkey = key.getPublicKeySecp256k1(true)
-//        val scriptHash = script.matchPayToScriptHash()
-//        script = BitcoinScript.buildPayToWitnessPubkeyHash(pubkey.data())
-//      }
-      val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
-      txHash.reverse();
-      val outPoint = Bitcoin.OutPoint.newBuilder()
-        .setHash(ByteString.copyFrom(txHash))
-        .setIndex(utx["vout"] as Int)
-        .setSequence(Long.MAX_VALUE.toInt())
-        .build()
-      val utxo = Bitcoin.UnspentTransaction.newBuilder()
-        .setAmount((utx["value"] as Int).toLong())
-        .setOutPoint(outPoint)
-        .setScript(ByteString.copyFrom(txScript))
-        .build()
-      input.addUtxo(utxo)
-      input.addPrivateKey(ByteString.copyFrom(key.data()))
+        var script = BitcoinScript(Numeric.hexStringToByteArray(utx["script"] as String))
+        val key = wallet.getKey(coin, utx["path"] as String)
+        if (script.isPayToScriptHash) {
+            val pubkey = key.getPublicKeySecp256k1(true)
+            val scriptHash = script.matchPayToScriptHash()
+            input.putScripts(Numeric.toHexString(scriptHash), ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkey.data()).data()))
+        }
+        val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
+        txHash.reverse();
+        val outPoint = Bitcoin.OutPoint.newBuilder().apply {
+            this.hash = ByteString.copyFrom(txHash)
+            this.index = utx["vout"] as Int
+            this.sequence = Long.MAX_VALUE.toInt()
+        }.build()
+        val utxo = Bitcoin.UnspentTransaction.newBuilder().apply {
+            this.amount = (utx["value"] as Int).toLong()
+            this.outPoint = outPoint
+            this.script = ByteString.copyFrom(script.data())
+        }.build()
+        input.addUtxo(utxo)
+        input.addPrivateKey(ByteString.copyFrom(key.data()))
+        print(utxo)
     }
+
+    print(input)
 
     var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
 
     input.plan = plan
+
+    print(input)
 
     val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
