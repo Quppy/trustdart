@@ -89,11 +89,12 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 let mnemonic: String? = args["mnemonic"] as? String
                 let passphrase: String? = args["passphrase"] as? String
                 let privateString: String? = args["privateString"] as? String
+                let isUseMaxAmount: Bool? = args["isUseMaxAmount"] as? Bool
                 if coin != nil && path != nil && txData != nil && mnemonic != nil {
                     let wallet = HDWallet(mnemonic: mnemonic!, passphrase: passphrase!)
                     
                     if wallet != nil {
-                        let txHash: String? = signHDTransaction(wallet: wallet!, coin: coin!, path: path!, txData: txData!)
+                        let txHash: String? = signHDTransaction(wallet: wallet!, coin: coin!, path: path!, txData: txData!, isUseMaxAmount: isUseMaxAmount)
                         if txHash == nil {
                             result(FlutterError(code: "txhash_null",
                                                 message: "Failed to buid and sign transaction",
@@ -108,7 +109,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                     }
                 } else {
                     if coin != nil && txData != nil && privateString != nil {
-                        let txHash: String? = signSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!)
+                        let txHash: String? = signSimpleTransaction(privateString: privateString!, coin: coin!, txData: txData!, isUseMaxAmount: isUseMaxAmount)
                         if txHash == nil {
                             result(FlutterError(code: "txhash_null",
                                                 message: "Failed to buid and sign transaction",
@@ -277,15 +278,15 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         return privateKey;
     }
     
-    func signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: [String: Any]) -> String? {
+    func signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: [String: Any], isUseMaxAmount: Bool?) -> String? {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoin, txData: txData, isUseMaxAmount: isUseMaxAmount)
         case "LTC":
-            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .litecoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .litecoin, txData: txData, isUseMaxAmount: isUseMaxAmount)
         case "BCH":
-            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoinCash, txData: txData)
+            txHash = signBitcoinTransaction(wallet: wallet, privateString: nil, coin: .bitcoinCash, txData: txData, isUseMaxAmount: isUseMaxAmount)
         case "ETH":
             txHash = signEthereumTransaction(wallet: wallet, path: path, txData: txData)
         case "XTZ":
@@ -301,15 +302,15 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
 
     }
     
-    func signSimpleTransaction(privateString: String, coin: String, txData: [String: Any]) -> String? {
+    func signSimpleTransaction(privateString: String, coin: String, txData: [String: Any], isUseMaxAmount: Bool?) -> String? {
         var txHash: String?
         switch coin {
         case "BTC":
-            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoin, txData: txData, isUseMaxAmount: isUseMaxAmount)
         case "LTC":
-            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .litecoin, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .litecoin, txData: txData, isUseMaxAmount: isUseMaxAmount)
         case "BCH":
-            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoinCash, txData: txData)
+            txHash = signBitcoinTransaction(wallet: nil, privateString: privateString, coin: .bitcoinCash, txData: txData, isUseMaxAmount: isUseMaxAmount)
         default:
             txHash = nil
         }
@@ -473,7 +474,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
         return txHash
     }
 
-    func signBitcoinTransaction(wallet: HDWallet?, privateString: String?, coin: CoinType, txData:  [String: Any]) -> String? {
+    func signBitcoinTransaction(wallet: HDWallet?, privateString: String?, coin: CoinType, txData:  [String: Any], isUseMaxAmount: Bool? = false) -> String? {
         let utxos: [[String: Any]] = txData["utxos"] as! [[String: Any]]
         var unspent: [BitcoinUnspentTransaction] = []
         var privateKeys: [Data] = []
@@ -521,6 +522,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
 //          $0.byteFee = txData["byteFee"] as! Int64
             $0.privateKey = privateKeys
             $0.scripts = scripts
+            $0.useMaxAmount = isUseMaxAmount!
             $0.plan = BitcoinTransactionPlan.with {
                 $0.amount = txData["amount"] as! Int64
                 $0.fee = txData["fees"] as! Int64
