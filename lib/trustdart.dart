@@ -102,7 +102,7 @@ class Trustdart {
   ///signs a transaction
   static Future<String> signTransaction(
       String mnemonic, String coin, String path, Map txData,
-      [String passphrase = "", bool? isUseMaxAmount]) async {
+      [bool? isUseMaxAmount, String passphrase = ""]) async {
     try {
       final String txHash =
           await _channel.invokeMethod('signTransaction', <String, dynamic>{
