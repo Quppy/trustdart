@@ -10,7 +10,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
   }
   
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-      print(AnySigner.supportsJSON(coin: CoinType.tezos))
+    
     switch call.method {
             case "generateMnemonic":
                 let passphrase: String = call.arguments as! String
@@ -365,7 +365,6 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
     
     func signTronTransaction(wallet: HDWallet, path: String, txData:  [String: Any]) -> String? {
        let cmd = txData["cmd"] as! String
-        print(txData)
         var txHash: String?
         let privateKey = wallet.getKey(coin: CoinType.tron, derivationPath: path)
         switch cmd {

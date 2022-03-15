@@ -110,12 +110,13 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         val mnemonic: String? = call.argument("mnemonic")
         val passphrase: String? = call.argument("passphrase")
         val privateString: String? = call.argument("privateString")
+        val isUseMaxAmount: Boolean? = call.argument("isUseMaxAmount")
         val txData: Map<String, Any>? = call.argument("txData")
         if (txData != null && coin != null && path != null && mnemonic != null) {
           val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
-            val txHash: String? = signHDTransaction(wallet, coin, path, txData)
+            val txHash: String? = signHDTransaction(wallet, coin, path, txData, isUseMaxAmount)
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("no_wallet",
@@ -123,7 +124,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           }
         } else {
           if (txData != null && coin != null && privateString != null) {
-            val txHash: String? = signSimpleTransaction(privateString, coin, txData)
+            val txHash: String? = signSimpleTransaction(privateString, coin, txData, isUseMaxAmount)
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("arguments_null", "[txData], [coin] and [path] and [mnemonic] cannot be null", null)
@@ -285,7 +286,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>): String? {
+  private fun signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>, isUseMaxAmount: Boolean?): String? {
     return when(coin) {
       "XTZ" -> {
         signTezosTransaction(wallet, path, txData)
@@ -294,13 +295,13 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         signEthereumTransaction(wallet, path, txData)
       }
       "BTC" -> {
-        signBitcoinHDTransaction(wallet, CoinType.BITCOIN, txData)
+        signBitcoinTransaction(wallet, null, CoinType.BITCOIN, txData, isUseMaxAmount)
       }
       "LTC" -> {
-        signBitcoinHDTransaction(wallet, CoinType.LITECOIN, txData)
+        signBitcoinTransaction(wallet, null, CoinType.LITECOIN, txData, isUseMaxAmount)
       }
       "BCH" -> {
-        signBitcoinCashTransaction(wallet, txData)
+        signBitcoinTransaction(wallet, null, CoinType.BITCOINCASH, txData, isUseMaxAmount)
       }
       "TRX" -> {
         signTronTransaction(wallet, path, txData)
@@ -312,16 +313,16 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signSimpleTransaction(privateString: String, coin: String, txData: Map<String, Any>): String? {
+  private fun signSimpleTransaction(privateString: String, coin: String, txData: Map<String, Any>, isUseMaxAmount: Boolean?): String? {
     return when(coin) {
       "BTC" -> {
-        signBitcoinSimpleTransaction(privateString, CoinType.BITCOIN, txData)
+        signBitcoinTransaction(null, privateString, CoinType.BITCOIN, txData, isUseMaxAmount)
       }
       "LTC" -> {
-        signBitcoinSimpleTransaction(privateString, CoinType.LITECOIN, txData)
+        signBitcoinTransaction(null, privateString, CoinType.LITECOIN, txData, isUseMaxAmount)
       }
       "BCH" -> {
-        signBitcoinSimpleTransaction(privateString, CoinType.BITCOINCASH, txData)
+        signBitcoinTransaction(null, privateString, CoinType.BITCOINCASH, txData, isUseMaxAmount)
       }
       else -> null
     }
@@ -495,9 +496,10 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     return result
   }
 
-  private fun signBitcoinHDTransaction(wallet: HDWallet, coin: CoinType, txData: Map<String, Any>): String? {
+  private fun signBitcoinTransaction(wallet: HDWallet?, privateString: String?, coin: CoinType, txData: Map<String, Any>, isUseMaxAmount: Boolean): String? {
     @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
+    val key: PrivateKey
 
     val input = Bitcoin.SigningInput.newBuilder().apply {
         this.amount = (txData["amount"] as Int).toLong()
@@ -505,74 +507,28 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         this.toAddress = txData["toAddress"] as String
         this.changeAddress = txData["changeAddress"] as String
         this.coinType = coin.value()
+        this.isUseMaxAmount = isUseMaxAmount
         // this.byteFee = (txData["changeAddress"] as Int).toLong()
     }
 
     for (utx in utxos) {
         var script = BitcoinScript(Numeric.hexStringToByteArray(utx["script"] as String))
-        val key = wallet.getKey(coin, utx["path"] as String)
+        if (privateString == null && wallet != null) {
+            // for hd wallet
+            key = wallet.getKey(coin, utx["path"] as String)
+        } else {
+            // for simple wallet
+            key = PrivateKey(privateString as String)
+        }
         if (script.isPayToScriptHash) {
             val pubkey = key.getPublicKeySecp256k1(true)
             val scriptHash = script.matchPayToScriptHash()
             val scriptHashString = Numeric.toHexString(scriptHash)
             val pubkeySha256RIPEMD = Hash.sha256RIPEMD(pubkey.data())
             input.putScripts(scriptHashString, ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkeySha256RIPEMD).data()))
-        }
-        if (script.isPayToWitnessScriptHash) {
-        }
-        if (script.isPayToWitnessPublicKeyHash) {
-        }
-    val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
-        txHash.reverse();
-        val outPoint = Bitcoin.OutPoint.newBuilder().apply {
-            this.hash = ByteString.copyFrom(txHash)
-            this.index = utx["vout"] as Int
-            this.sequence = Long.MAX_VALUE.toInt()
-        }.build()
-        val utxo = Bitcoin.UnspentTransaction.newBuilder().apply {
-            this.amount = (utx["value"] as Int).toLong()
-            this.outPoint = outPoint
-            this.script = ByteString.copyFrom(script.data())
-        }.build()
-        input.addUtxo(utxo)
-        input.addPrivateKey(ByteString.copyFrom(key.data()))
-    }
-
-    var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
-
-    input.plan = plan
-
-    val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
-    val hexString = Numeric.toHexString(output.encoded.toByteArray())
-
-    return hexString
-  }
-
-  private fun signBitcoinSimpleTransaction(privateString: String, coin: CoinType, txData: Map<String, Any>): String? {
-    @Suppress("UNCHECKED_CAST")
-    val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
-    val key: PrivateKey = PrivateKey(Numeric.hexStringToByteArray(privateString as String))
-    val pubkey = key.getPublicKeySecp256k1(true)
-    val input = Bitcoin.SigningInput.newBuilder().apply {
-        this.amount = (txData["amount"] as Int).toLong()
-        this.hashType = BitcoinScript.hashTypeForCoin(coin)
-        this.toAddress = txData["toAddress"] as String
-        this.changeAddress = txData["changeAddress"] as String
-        this.coinType = coin.value()
-        // this.byteFee = (txData["changeAddress"] as Int).toLong()
-    }
-
-    for (utx in utxos) {
-        var script = BitcoinScript(Numeric.hexStringToByteArray(utx["script"] as String))
-        if (script.isPayToScriptHash) {
-            val scriptHash = script.matchPayToScriptHash()
-            val scriptHashString = Numeric.toHexString(scriptHash)
-            val pubkeySha256RIPEMD = Hash.sha256RIPEMD(pubkey.data())
-            input.putScripts(scriptHashString, ByteString.copyFrom(BitcoinScript.buildPayToWitnessPubkeyHash(pubkeySha256RIPEMD).data()))
-        }
-        if (script.isPayToWitnessScriptHash) {
-        }
-        if (script.isPayToWitnessPublicKeyHash) {
+        } else if (script.isPayToWitnessScriptHash) {
+        } else if (script.isPayToWitnessPublicKeyHash) {
+        } else {
         }
     val txHash = Numeric.hexStringToByteArray(utx["txid"] as String);
         txHash.reverse();
