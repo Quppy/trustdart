@@ -116,7 +116,8 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
-            val txHash: String? = signHDTransaction(wallet, coin, path, txData, isUseMaxAmount)
+            val txHash: String? =
+                isUseMaxAmount?.let { signHDTransaction(wallet, coin, path, txData, it) }
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("no_wallet",
@@ -124,7 +125,8 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           }
         } else {
           if (txData != null && coin != null && privateString != null) {
-            val txHash: String? = signSimpleTransaction(privateString, coin, txData, isUseMaxAmount)
+            val txHash: String? =
+                isUseMaxAmount?.let { signSimpleTransaction(privateString, coin, txData, it) }
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("arguments_null", "[txData], [coin] and [path] and [mnemonic] cannot be null", null)
@@ -286,7 +288,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>, isUseMaxAmount: Boolean?): String? {
+  private fun signHDTransaction(wallet: HDWallet, coin: String, path: String, txData: Map<String, Any>, isUseMaxAmount: Boolean = false): String? {
     return when(coin) {
       "XTZ" -> {
         signTezosTransaction(wallet, path, txData)
@@ -313,7 +315,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     }
   }
 
-  private fun signSimpleTransaction(privateString: String, coin: String, txData: Map<String, Any>, isUseMaxAmount: Boolean?): String? {
+  private fun signSimpleTransaction(privateString: String, coin: String, txData: Map<String, Any>, isUseMaxAmount: Boolean = false): String? {
     return when(coin) {
       "BTC" -> {
         signBitcoinTransaction(null, privateString, CoinType.BITCOIN, txData, isUseMaxAmount)
@@ -499,7 +501,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
   private fun signBitcoinTransaction(wallet: HDWallet?, privateString: String?, coin: CoinType, txData: Map<String, Any>, isUseMaxAmount: Boolean): String? {
     @Suppress("UNCHECKED_CAST")
     val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
-    val key: PrivateKey
+    var key: PrivateKey
 
     val input = Bitcoin.SigningInput.newBuilder().apply {
         this.amount = (txData["amount"] as Int).toLong()
@@ -507,7 +509,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         this.toAddress = txData["toAddress"] as String
         this.changeAddress = txData["changeAddress"] as String
         this.coinType = coin.value()
-        this.isUseMaxAmount = isUseMaxAmount
+        this.useMaxAmount = isUseMaxAmount
         // this.byteFee = (txData["changeAddress"] as Int).toLong()
     }
 
@@ -518,7 +520,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
             key = wallet.getKey(coin, utx["path"] as String)
         } else {
             // for simple wallet
-            key = PrivateKey(privateString as String)
+            key = PrivateKey(Numeric.hexStringToByteArray(privateString as String))
         }
         if (script.isPayToScriptHash) {
             val pubkey = key.getPublicKeySecp256k1(true)
@@ -551,45 +553,6 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     input.plan = plan
 
     val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
-    val hexString = Numeric.toHexString(output.encoded.toByteArray())
-
-    return hexString
-  }
-
-  private fun signBitcoinCashTransaction(wallet: HDWallet, txData: Map<String, Any>): String? {
-    @Suppress("UNCHECKED_CAST")
-    val utxos: List<Map<String, Any>> = txData["utxos"] as List<Map<String, Any>>
-
-    val input = Bitcoin.SigningInput.newBuilder()
-            .setAmount((txData["amount"] as Int).toLong())
-            .setHashType(BitcoinScript.hashTypeForCoin(CoinType.BITCOINCASH))
-            .setToAddress(txData["toAddress"] as String)
-            .setChangeAddress(txData["changeAddress"] as String)
-
-    for (utx in utxos) {
-      val privateKey = wallet.getKey(CoinType.BITCOINCASH, utx["path"] as String)
-      input.addPrivateKey(ByteString.copyFrom(privateKey.data()))
-      val txHash = Numeric.hexStringToByteArray(utx["txid"] as String)
-        txHash.reverse()
-      val outPoint = Bitcoin.OutPoint.newBuilder()
-              .setHash(ByteString.copyFrom(txHash))
-              .setIndex(utx["vout"] as Int)
-              .setSequence(Long.MAX_VALUE.toInt())
-              .build()
-      val txScript = Numeric.hexStringToByteArray(utx["script"] as String);
-      val utxo = Bitcoin.UnspentTransaction.newBuilder()
-              .setAmount((utx["value"] as Int).toLong())
-              .setOutPoint(outPoint)
-              .setScript(ByteString.copyFrom(txScript))
-              .build()
-      input.addUtxo(utxo)
-    }
-
-    var plan = AnySigner.plan(input.build(), CoinType.BITCOINCASH, Bitcoin.TransactionPlan.parser())
-
-    input.plan = plan
-
-    val output = AnySigner.sign(input.build(), CoinType.BITCOINCASH, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
 
     return hexString
