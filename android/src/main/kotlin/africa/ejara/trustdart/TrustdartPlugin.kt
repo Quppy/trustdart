@@ -510,7 +510,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         this.changeAddress = txData["changeAddress"] as String
         this.coinType = coin.value()
         this.useMaxAmount = isUseMaxAmount
-        // this.byteFee = (txData["changeAddress"] as Int).toLong()
+        this.byteFee = (txData["feeRate"] as Int).toLong()
     }
 
     for (utx in utxos) {
@@ -551,7 +551,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
     var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
 
     input.plan = plan
-
+      
     val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
 

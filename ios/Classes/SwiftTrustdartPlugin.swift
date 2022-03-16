@@ -492,13 +492,6 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
                 let pubkey = key.getPublicKeySecp256k1(compressed: false)
                 let scriptHash = script.matchPayToScriptHash()!
                 scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
-                // if coin == CoinType.litecoin {
-                //     let bytesSha256 = Hash.sha256(data: pubkey.data)
-                //     let bytesRipemd160 = Hash.ripemd(data: bytesSha256)
-                //     scripts[scriptHash.hexString] = BitcoinScript.buildPayToPublicKeyHash(hash: bytesRipemd160).data
-                // } else {
-                //     scripts[scriptHash.hexString] = BitcoinScript.buildPayToWitnessPubkeyHash(hash: pubkey.bitcoinKeyHash).data
-                // }
             } else if script.isPayToWitnessScriptHash {
             } else if script.isPayToWitnessPublicKeyHash {
             } else {
@@ -518,7 +511,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String
             $0.coinType = coin.rawValue
-//          $0.byteFee = txData["byteFee"] as! Int64
+            $0.byteFee = txData["feeRate"] as! Int64
             $0.privateKey = privateKeys
             $0.scripts = scripts
             $0.useMaxAmount = isUseMaxAmount!
