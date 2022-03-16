@@ -26,6 +26,7 @@ import wallet.core.jni.proto.Ethereum
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import kotlin.math.round
 
 /** TrustdartPlugin */
 class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
@@ -116,8 +117,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           val wallet: HDWallet? = HDWallet(mnemonic, passphrase)
 
           if (wallet != null) {
-            val txHash: String? =
-                isUseMaxAmount?.let { signHDTransaction(wallet, coin, path, txData, it) }
+            val txHash: String? = signHDTransaction(wallet, coin, path, txData, isUseMaxAmount == true)
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("no_wallet",
@@ -125,8 +125,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
           }
         } else {
           if (txData != null && coin != null && privateString != null) {
-            val txHash: String? =
-                isUseMaxAmount?.let { signSimpleTransaction(privateString, coin, txData, it) }
+            val txHash: String? = signSimpleTransaction(privateString, coin, txData, isUseMaxAmount == true)
             if (txHash == null) result.error("txhash_null", "failed to buid and sign transaction", null) else result.success(txHash)
           } else {
             result.error("arguments_null", "[txData], [coin] and [path] and [mnemonic] cannot be null", null)
@@ -510,7 +509,7 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         this.changeAddress = txData["changeAddress"] as String
         this.coinType = coin.value()
         this.useMaxAmount = isUseMaxAmount
-        this.byteFee = (txData["feeRate"] as Int).toLong()
+        this.byteFee = round((txData["feeRate"] as Int).toDouble()/1000).toLong()
     }
 
     for (utx in utxos) {
@@ -548,11 +547,9 @@ class TrustdartPlugin: FlutterPlugin, MethodCallHandler {
         input.addPrivateKey(ByteString.copyFrom(key.data()))
     }
 
-    var plan = AnySigner.plan(input.build(), coin, Bitcoin.TransactionPlan.parser())
+    var output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
 
-    input.plan = plan
-      
-    val output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
+    output = AnySigner.sign(input.build(), coin, Bitcoin.SigningOutput.parser())
     val hexString = Numeric.toHexString(output.encoded.toByteArray())
 
     return hexString

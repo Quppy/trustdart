@@ -511,7 +511,7 @@ public class SwiftTrustdartPlugin: NSObject, FlutterPlugin {
             $0.toAddress = txData["toAddress"] as! String
             $0.changeAddress = txData["changeAddress"] as! String
             $0.coinType = coin.rawValue
-            $0.byteFee = txData["feeRate"] as! Int64
+            // $0.byteFee = txData["feeRate"] as! Int64
             $0.privateKey = privateKeys
             $0.scripts = scripts
             $0.useMaxAmount = isUseMaxAmount!
